@@ -1,15 +1,4 @@
-import threading
-import time
 from pymongo import MongoClient
-from test_kafka_producer import test_kafka_producer
-from test_kafka_integration import test_kafka_integration
-
-def run_consumer():
-    test_kafka_integration()
-
-def run_producer():
-    time.sleep(2)  # Give the consumer a moment to start up
-    test_kafka_producer()
 
 def process_raw_data():
     # Connect to MongoDB
@@ -17,7 +6,7 @@ def process_raw_data():
     db = client["epl_database"]  # Database name
 
     # Collections
-    raw_collection = db["epl_database"]
+    raw_collection = db["raw_matches"]
     processed_collection = db["processed_matches"]
 
     # Fetch all raw matches
@@ -25,6 +14,7 @@ def process_raw_data():
     for raw_match in raw_matches:
         try:
             # Extract relevant fields
+            match_id = raw_match.get("id")  # Unique identifier for deduplication
             date = raw_match.get("date")
             short_name = raw_match.get("shortName")
             
@@ -50,6 +40,7 @@ def process_raw_data():
 
             # Prepare processed match document
             processed_match = {
+                "match_id": match_id,
                 "date": date,
                 "short_name": short_name,
                 "home_team": home_team,
@@ -66,43 +57,17 @@ def process_raw_data():
                 },
             }
 
-            # Insert processed match into secondary collection
-            result = processed_collection.insert_one(processed_match)
-            print(f"✅ Processed match inserted with ID: {result.inserted_id}")
+            # Insert or update the processed match document (deduplication)
+            result = processed_collection.update_one(
+                {"match_id": match_id},  # Query to check for existing record
+                {"$set": processed_match},  # Update fields if record exists
+                upsert=True  # Insert if no matching record is found
+            )
+            
+            if result.upserted_id:
+                print(f"✅ New match inserted with ID: {result.upserted_id}")
+            else:
+                print(f"✅ Existing match updated for ID: {match_id}")
 
         except Exception as e:
             print(f"❌ Error processing match {raw_match.get('id')}: {e}")
-
-def check_processed_data():
-    # Connect to MongoDB
-    client = MongoClient("mongodb://localhost:27017/")  # Adjust if using a different host/port
-    db = client["epl_database"]  # Database name
-    processed_collection = db["processed_matches"]  # Collection name
-
-    # Query the database for documents
-    documents = list(processed_collection.find())
-    if documents:
-        print(f"✅ Processed data found in MongoDB! Total documents: {len(documents)}")
-        for doc in documents:
-            print(doc)  # Print each document (optional)
-    else:
-        print("❌ No processed data found in MongoDB!")
-
-def test_kafka_e2e():
-    consumer_thread = threading.Thread(target=run_consumer)
-    producer_thread = threading.Thread(target=run_producer)
-
-    consumer_thread.start()
-    producer_thread.start()
-
-    consumer_thread.join(timeout=10)  # Wait for up to 10 seconds
-    producer_thread.join()
-
-    # Process raw data into processed_matches collection
-    process_raw_data()
-
-    # Check processed data in MongoDB after processing
-    check_processed_data()
-
-if __name__ == "__main__":
-    test_kafka_e2e()

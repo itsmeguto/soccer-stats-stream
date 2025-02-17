@@ -59,7 +59,7 @@ def main():
                 print(f"  {team['name']}: {team['score']}")
             
             # Send each match data to Kafka
-            send_to_kafka("epl_matches", match)
+            send_to_kafka("epl-matches", match)
     else:
         print("Failed to fetch data from the API")
 
