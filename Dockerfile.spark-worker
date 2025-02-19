@@ -1,0 +1,11 @@
+# Use Bitnami's Spark image as the base
+FROM bitnami/spark:latest
+
+# Set environment variables for Spark worker mode
+ENV SPARK_MODE=worker \
+    SPARK_MASTER_URL=spark://spark-master:7077 \
+    SPARK_WORKER_MEMORY=1G \
+    SPARK_WORKER_CORES=2
+
+# Start the Spark worker process in foreground mode
+CMD ["/opt/bitnami/scripts/spark/entrypoint.sh", "/opt/bitnami/scripts/spark/run.sh"]

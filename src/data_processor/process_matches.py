@@ -2,46 +2,39 @@ from pymongo import MongoClient
 
 def process_raw_data():
     # Connect to MongoDB
-    client = MongoClient("mongodb://localhost:27017/")  # Adjust if using a different host/port
+    client = MongoClient("mongodb://localhost:27017/")
     db = client["epl_database"]  # Database name
-
-    # Collections
-    raw_collection = db["raw_matches"]
-    processed_collection = db["processed_matches"]
+    raw_collection = db["epl_database"]  # Collection name
+    processed_collection = db["processed_matches"]  # Processed collection name
 
     # Fetch all raw matches
     raw_matches = raw_collection.find()
-    for raw_match in raw_matches:
+    for raw_data in raw_matches:
         try:
-            # Extract relevant fields
-            match_id = raw_match.get("id")  # Unique identifier for deduplication
-            date = raw_match.get("date")
-            short_name = raw_match.get("shortName")
-            
-            # Get competition details
-            competition = raw_match.get("competitions", [])[0]
-            venue = competition.get("venue", {}).get("fullName")
+            # Extract match details from the top-level fields
+            match_id = raw_data.get("id")
+            match_date = raw_data.get("date")
+            short_name = raw_data.get("name")
+            venue = raw_data.get("venue")
 
-            # Extract teams (home and away)
-            competitors = competition.get("competitors", [])
-            home_team = next((team.get("team", {}).get("displayName") for team in competitors if team.get("homeAway") == "home"), None)
-            away_team = next((team.get("team", {}).get("displayName") for team in competitors if team.get("homeAway") == "away"), None)
+            # Extract competitors
+            competitors = raw_data.get("competitors", [])
+            home_team = next((team.get("name") for team in competitors if team.get("homeAway") == "home"), None)
+            away_team = next((team.get("name") for team in competitors if team.get("homeAway") == "away"), None)
 
-            # Extract odds
-            odds = competition.get("odds", [{}])
-            win_home_team = odds[0].get("homeTeamOdds", {}).get("value")
-            draw = odds[0].get("drawOdds", {}).get("value")
-            win_away_team = odds[0].get("awayTeamOdds", {}).get("value")
-
-            # Extract goal odds
-            goal_odds = competition.get("odds", [{}])[1]
-            over_odds = goal_odds.get("total", {}).get("over", {}).get("close", {}).get("odds")
-            under_odds = goal_odds.get("total", {}).get("under", {}).get("close", {}).get("odds")
+            # Handle odds (store None if not available)
+            odds = raw_data.get("odds", [])
+            if odds:
+                win_home_team = odds[0].get("homeTeamOdds", {}).get("value")
+                draw = odds[0].get("drawOdds", {}).get("value")
+                win_away_team = odds[0].get("awayTeamOdds", {}).get("value")
+            else:
+                win_home_team = draw = win_away_team = None
 
             # Prepare processed match document
             processed_match = {
                 "match_id": match_id,
-                "date": date,
+                "date": match_date,
                 "short_name": short_name,
                 "home_team": home_team,
                 "away_team": away_team,
@@ -50,10 +43,6 @@ def process_raw_data():
                     "win_home_team": win_home_team,
                     "draw": draw,
                     "win_away_team": win_away_team,
-                },
-                "goal_odds": {
-                    "over": over_odds,
-                    "under": under_odds,
                 },
             }
 
@@ -70,4 +59,6 @@ def process_raw_data():
                 print(f"✅ Existing match updated for ID: {match_id}")
 
         except Exception as e:
-            print(f"❌ Error processing match {raw_match.get('id')}: {e}")
+            print(f"❌ Error processing match {raw_data.get('id')}: {e}")
+
+    client.close()

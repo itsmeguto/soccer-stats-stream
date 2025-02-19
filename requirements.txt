@@ -3,3 +3,4 @@ pathlib==1.0.1
 ruamel.yaml==0.18.10
 kafka-python==2.0.3
 pymongo
+pyspark
